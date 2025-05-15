@@ -1,15 +1,16 @@
 import os
 import json
+import base64
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 from google.oauth2.service_account import Credentials
 import gspread
 
-# Layout full-width
+# layout full-width
 st.set_page_config(page_title="Registro de Entregas", layout="wide")
 
-# Botão no cabeçalho
+# header com título e botão à direita
 col1, col2 = st.columns([9, 1])
 with col1:
     st.title("📝 Registro de Entregas")
@@ -24,53 +25,58 @@ with col2:
         unsafe_allow_html=True,
     )
 
-# Autenticação via variável de ambiente
+# --- autenticação via Base64 secret ---
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-try:
-    creds_json = os.environ["GOOGLE_CREDENTIALS"]
-except KeyError:
+b64 = st.secrets.get("GOOGLE_CREDENTIALS_B64", "")
+if not b64:
     st.error(
-        "❌ Variável de ambiente GOOGLE_CREDENTIALS não definida.\n\n"
-        "1. Abra as Settings → Secrets do seu repositório no GitHub.\n"
-        "2. Crie um secret chamado GOOGLE_CREDENTIALS com o JSON da conta de serviço.\n"
-        "3. No seu ambiente local, exporte:\n"
-        "   export GOOGLE_CREDENTIALS='{\"type\":\"service_account\",...}'\n"
+        "❌ O segredo GOOGLE_CREDENTIALS_B64 não está definido.\n\n"
+        "No Streamlit Cloud → Settings → Secrets, crie uma chave\n"
+        "GOOGLE_CREDENTIALS_B64 com o conteúdo Base64 do seu JSON."
     )
     st.stop()
 
-creds_json = st.secrets["GOOGLE_CREDENTIALS"]
-st.write("DEBUG: length of secret =", len(creds_json))
-# se quiser ver o começo:
-st.write("DEBUG: first 200 chars:", repr(creds_json[:200]))
-info = json.loads(creds_json)
-info = json.loads(creds_json)
-creds = Credentials.from_service_account_info(info, scopes=SCOPES)
-client = gspread.authorize(creds)
+try:
+    creds_json = base64.b64decode(b64).decode("utf-8")
+    info = json.loads(creds_json)
+    creds = Credentials.from_service_account_info(info, scopes=SCOPES)
+    client = gspread.authorize(creds)
+except Exception as e:
+    st.error(f"❌ Falha ao decodificar credenciais: {e}")
+    st.stop()
 
-# Abre a planilha
+# abre a planilha
 SHEET_ID = "1_4f0JIGKFQ7sJz00ESkuhFXbZaV4hByYfHitbtAmcwQ"
 try:
     sheet = client.open_by_key(SHEET_ID).sheet1
 except Exception:
-    st.error("❌ Não foi possível abrir a planilha. Verifique o ID e o compartilhamento.")
+    st.error("❌ Não foi possível abrir a planilha. Verifique o ID e compartilhamento.")
     st.stop()
 
-# Gerenciamento de cabeçalho
+# gerencia cabeçalho
 header = ["Data", "Entrega", "Trabalho Realizado", "Resumo para o Petrvs", "Preenchido por"]
 first = sheet.row_values(1)
 if first != header:
     sheet.insert_row(header, index=1, value_input_option="USER_ENTERED")
 sheet.format("1:1", {"textFormat": {"bold": True}})
+sheet.format("2:1000", {"textFormat": {"bold": False}})
 try:
     if sheet.row_values(2) == header:
         sheet.delete_rows(2)
 except:
     pass
 
-# Inputs do usuário
-USUARIOS = ["Selecione o nome do preenchedor", "Antônio Azambuja", "Pedro Reckziegel", "Ricardo Zomer", "Tólio Ribeiro"]
+# inputs
+USUARIOS = [
+    "Selecione o nome do preenchedor",
+    "Antônio Azambuja",
+    "Pedro Reckziegel",
+    "Ricardo Zomer",
+    "Tólio Ribeiro",
+]
 usuario = st.selectbox("Quem está preenchendo?", USUARIOS)
 data_atividade = st.date_input("Data da atividade", format="DD/MM/YYYY")
+
 ENTREGAS = [
     "Pleitos de alteração tarifária e alteração de NCM/TEC",
     "Análise de Projetos de Lei e proposições normativas",
@@ -83,7 +89,7 @@ ENTREGAS = [
 entrega = st.selectbox("Tipo de Entrega", ENTREGAS)
 atividade = st.text_area("Trabalho Realizado")
 
-# Função de gravação
+# função salvar
 def salvar(data, tipo, texto, quem):
     full = data.strftime("%d/%m/%Y")
     short = data.strftime("%d/%m")
@@ -100,22 +106,22 @@ if st.button("Salvar Registro"):
         st.success("✅ Registro salvo com sucesso!")
         st.experimental_rerun()
 
-# Exibição e edição
+# exibição e edição
 st.subheader("Registros Recentes")
 records = sheet.get_all_records()
 df = pd.DataFrame(records)
+
 if df.empty:
     st.info("Ainda não há registros.")
 else:
     df = df[header]
-    edited_df = st.data_editor(df, hide_index=True, use_container_width=True)
+    edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True, hide_index=True)
     if st.button("Atualizar Planilha com Edições"):
         sheet.resize(rows=1)
         if not edited_df.empty:
             sheet.append_rows(edited_df.values.tolist(), value_input_option="USER_ENTERED")
         st.success("Planilha atualizada com as edições!")
         st.experimental_rerun()
-
 
 
 
