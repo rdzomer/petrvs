@@ -38,6 +38,11 @@ except KeyError:
     )
     st.stop()
 
+creds_json = st.secrets["GOOGLE_CREDENTIALS"]
+st.write("DEBUG: length of secret =", len(creds_json))
+# se quiser ver o começo:
+st.write("DEBUG: first 200 chars:", repr(creds_json[:200]))
+info = json.loads(creds_json)
 info = json.loads(creds_json)
 creds = Credentials.from_service_account_info(info, scopes=SCOPES)
 client = gspread.authorize(creds)
