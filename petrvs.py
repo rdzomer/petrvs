@@ -25,7 +25,7 @@ with col2:
         unsafe_allow_html=True,
     )
 
-# --- autenticação via Base64 secret ---
+# --- autenticação via Base64 secret com correção de padding ---
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 b64 = st.secrets.get("GOOGLE_CREDENTIALS_B64", "")
 if not b64:
@@ -35,6 +35,12 @@ if not b64:
         "GOOGLE_CREDENTIALS_B64 com o conteúdo Base64 do seu JSON."
     )
     st.stop()
+
+# remove quebras de linha e ajusta padding
+b64 = b64.replace("\n", "").strip()
+missing_padding = len(b64) % 4
+if missing_padding:
+    b64 += "=" * (4 - missing_padding)
 
 try:
     creds_json = base64.b64decode(b64).decode("utf-8")
@@ -122,6 +128,7 @@ else:
             sheet.append_rows(edited_df.values.tolist(), value_input_option="USER_ENTERED")
         st.success("Planilha atualizada com as edições!")
         st.experimental_rerun()
+
 
 
 
